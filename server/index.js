@@ -1,9 +1,13 @@
+const fs = require('fs');
+const https = require('https');
 const express = require('express');
 const cors = require('cors');
 const Journalctl = require('journalctl');
 const axios = require('axios');
 const PORT = process.env.PORT || 5478;
 const KEY = process.env.API_KEY || "";
+const CERT_KEY = process.env.CERT_KEY || "";
+const CERT = process.env.CERT || "";
 
 const app = express();
 
@@ -48,20 +52,28 @@ function removeOld(ipObj) {
   const filtered = Object.keys(ipObj).filter(ip => {
     return ipObj[ip].latestAttempt / 1000 > yesterday;
   })
-  ipObj = filtered.reduce((obj, ip) => {
+  // turn array back into an aobject
+  const newIpObj = filtered.reduce((obj, ip) => {
     return { ...obj, [ip]: ipObj[ip] };
   }, {});
+  return newIpObj;
 }
 
 // SETUP ENDPOINT
-app.listen(PORT, () => {
-  log(`listening on port ${PORT}`);
-});
-
 app.get('/', (req, res) => {
     log(`request ${req.query} recieved!`);
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(ipAndData));
+});
+
+// ADD HTTPS
+const options = {
+  key: fs.readFileSync(CERT_KEY),
+  cert: fs.readFileSync(CERT)
+};
+
+https.createServer(options, app).listen(PORT, () => {
+  log(`listening on port ${PORT}`);
 });
 
 // MONITOR LOG AND CREATE `ipAndData` OBJECT
@@ -91,7 +103,7 @@ journalctl.on('event', (event) => {
       if (Date.now() - (ipAndData[ip].latestAttempt / 1000) < 60000 ) {
         log(`new IP: ${ip}`);
       }
-      removeOld(ipAndData);
+      ipAndData = removeOld(ipAndData);
     }
   }
 })
