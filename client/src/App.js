@@ -8,7 +8,7 @@ function App() {
   const [ attempts, setAttempts ] = useState({});
 
   useEffect(() => {
-    axios.get(`http://trevorbuchanan.com:${PORT}/`)
+    axios.get(`https://trevorbuchanan.com:${PORT}/`)
       .then(res => {
         setAttempts(res.data);
       })

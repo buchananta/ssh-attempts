@@ -6,8 +6,6 @@ const Journalctl = require('journalctl');
 const axios = require('axios');
 const PORT = process.env.PORT || 5478;
 const KEY = process.env.API_KEY || "";
-const CERT_KEY = process.env.CERT_KEY || "";
-const CERT = process.env.CERT || "";
 
 const app = express();
 
@@ -37,22 +35,30 @@ function addLocation(ip, ipObj) {
     + `&fields=latitude,longitude`
   )
     .then(res => {
-      ipObj.location = res.data;
+      if (res.data.success !== false) {
+        ipObj.location = res.data;
+      }
+      else {
+        // set a invalid lat and lon to get around
+        // undefined .location making infinite requests
+        // and probably angering the api people
+        log("Forced to set invalid location for " + ip);
+        ipObj.location = { latitude: 91, longitude: 181 } 
+      }
     })
     .catch(err => {
       error(err);
     })
 }
 
-
-
 function removeOld(ipObj) {
   let yesterday = new Date();
   yesterday.setDate(yesterday.getDate() - 1);
+  // filter out stuff older than one day
   const filtered = Object.keys(ipObj).filter(ip => {
     return ipObj[ip].latestAttempt / 1000 > yesterday;
   })
-  // turn array back into an aobject
+  // turn array back into an object
   const newIpObj = filtered.reduce((obj, ip) => {
     return { ...obj, [ip]: ipObj[ip] };
   }, {});
@@ -60,13 +66,17 @@ function removeOld(ipObj) {
 }
 
 // SETUP ENDPOINT
+//app.listen(PORT, () => {
+//  log(`listening on port ${PORT}`);
+//});
+
 app.get('/', (req, res) => {
     log(`request ${req.query} recieved!`);
     res.setHeader('Content-Type', 'application/json');
     res.end(JSON.stringify(ipAndData));
 });
 
-// ADD HTTPS
+// ADD HTTPS ENDPOINT
 const options = {
   key: fs.readFileSync(CERT_KEY),
   cert: fs.readFileSync(CERT)
@@ -76,8 +86,9 @@ https.createServer(options, app).listen(PORT, () => {
   log(`listening on port ${PORT}`);
 });
 
+
 // MONITOR LOG AND CREATE `ipAndData` OBJECT
-const journalctl = new Journalctl({unit: "ssh", since: "yesterday"});
+const journalctl = new Journalctl({unit: "ssh", since: "1 hour ago"});
 let ipAndData = {};
 journalctl.on('event', (event) => {
   // only work with events that contain 'disconnect' in the message
@@ -98,7 +109,7 @@ journalctl.on('event', (event) => {
       if (ipAndData[ip].count == undefined) {
         ipAndData[ip].count = 0;
       }
-      ipAndData[ip].latesetAttempt = event.__REALTIME_TIMESTAMP,
+      ipAndData[ip].latestAttempt = event.__REALTIME_TIMESTAMP,
       ipAndData[ip].count += 1;
       if (Date.now() - (ipAndData[ip].latestAttempt / 1000) < 60000 ) {
         log(`new IP: ${ip}`);
@@ -107,5 +118,3 @@ journalctl.on('event', (event) => {
     }
   }
 })
-
-
